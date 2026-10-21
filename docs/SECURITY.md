@@ -1,16 +1,25 @@
-# Framework version and remaining risks
+# Security notes — Laravel 13 / React SPA
 
-Laravel is intentionally pinned to **10.49.1**. It has not been upgraded. Laravel 10 security support ended on 4 February 2025. Compatible dependencies were refreshed, but the current Composer audit reports four entries in Laravel itself:
+## Framework and dependencies
 
-| Advisory ID | Finding |
-| --- | --- |
-| PKSA-d5tc-s1qs-h781 | XSS in debug page information |
-| PKSA-m5cs-t1y6-qpcs | Temporary signed URL path confusion |
-| PKSA-3r5d-mb8f-1qw9 | Email validation CRLF injection |
-| PKSA-mdq4-51ck-6kdq | Email validation CRLF injection (overlapping entry) |
+The application now targets **PHP 8.4 + Laravel 13** and uses stable locked dependencies. The older Laravel 10 findings in the former `composer-audit.json` and historical documentation described the **previous implementation**, not the upgraded framework. Do not use them as a current vulnerability report. Run `composer audit` and `npm audit` against the **current** lockfiles before deployment. This repository is not security-audited.
 
-Full upstream advisory links and affected versions are in [composer-audit.json](composer-audit.json). Run `composer audit` for the raw findings; it is expected to fail while those advisories remain. The application explicitly rejects control characters and whitespace inside email addresses, but this is not a framework patch or a claim that all affected framework behavior has been fixed.
+## Data access
 
-Keep this app local while the unsupported framework constraint remains. Local password recovery links are written to Docker logs rather than sent by an email provider. Do not share those logs or use real sensitive information in screenshots.
+- Every notes query is scoped to the authenticated owner's user ID. Another user's record returns 404 rather than revealing its presence.
+- Notes from the legacy schema without an owner remain private and cannot be silently claimed at registration.
+- Policies protect updates and deletes. SQL includes an expected integer version; stale modifications cannot overwrite newer data.
+- API responses use `NoteResource` to avoid accidentally disclosing database columns.
 
-The Laravel implementation includes authentication, scoped ownership, policies, CSRF middleware, escaped views, locked IDs/versions, session regeneration, authentication throttling, and atomic write preconditions. Tests exercise those application boundaries; they do not remove framework-level risks.
+## Authentication
+
+- Laravel's server-side session guard and Sanctum's stateful API middleware handle authentication. Axios sends CSRF tokens; session cookies are HTTP-only.
+- Authentication endpoints are throttled and sessions are regenerated after login or registration, invalidated on logout.
+- Passwords are hashed; registration enforces a minimum length and a byte cap. Password-reset flows use Laravel tokens.
+- Password reset mail uses the log driver by default. Logs may contain secret reset links—do not share them.
+
+## Operating precautions
+
+Docker Compose binds the app to localhost and keeps the database and encryption key in a named volume. Never expose `APP_DEBUG=true` on a public server. Configure HTTPS, cookie domains, reliable mail, backups, log retention and security monitoring before a real deployment.
+
+The automated feature tests include authentication, unauthorized data access, validation and concurrent update protection. Playwright also checks separate-account data isolation and major accessibility issues, but testing does not replace a security review.

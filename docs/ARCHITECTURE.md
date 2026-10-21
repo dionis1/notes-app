@@ -1,27 +1,27 @@
-# Laravel design decisions
+# Architecture — Laravel 13 API and React SPA
 
-## Framework constraint
+## Boundaries
 
-Laravel remains pinned to 10.49.1. Compatible dependencies were refreshed. Its expired support and remaining framework audit entries are documented in SECURITY.md. No framework upgrade is claimed.
+The server is **Laravel 13** with a versioned JSON API and session-based authentication. **React 19** renders the interface, React Router manages client-side navigation, Axios handles requests, and **Tailwind CSS 4** styles the pages.
 
-## Private notes
+The React editor owns form state. All reads and mutations happen through `/api/v1/notes` rather than embedded Eloquent data or Livewire hydration. Laravel validates requests and returns `NoteResource` fields only.
 
-New notes belong to the authenticated user. Every query starts from the user's notes relationship. Policies protect updates and deletes; foreign records return 404. Locked Livewire IDs/versions provide additional protection, while ownership checks remain the actual authorization boundary.
+## Ownership and legacy data
 
-The ownership migration leaves old anonymous records unowned and invisible. A new account never inherits them. Assign an owner only after verifying the records belong to that person.
+Queries always start from the authenticated user's `notes()` relation. `NotePolicy` authorizes writes and foreign records return 404. The ownership migration deliberately leaves legacy records with `user_id = null` hidden; **never auto-assign these records to the first person who registers**. Back up the database and verify ownership before performing any manual data migration.
 
-## Keep the service where it adds behavior
+## Concurrency
 
-The component manages form state and validation. The service performs version-aware mutations. The original pass-through repository/interface wrappers were removed because they added no distinct storage behavior. Eloquent relationships provide scoped reads without additional abstraction.
+Notes have monotonically increasing integer `version` values, initially 1. Updates and deletes use one conditional SQL operation that includes the expected version and current user. A stale request fails without mutating the record. The JSON controller translates version conflicts to HTTP **409**, and React retains the editor's draft. A deleted note cannot accidentally be re-created as a side effect of editing.
 
-## Concurrent edits
+## API shape and paging
 
-Each note has an integer version. Update and delete SQL includes the owner and expected version. A stale write produces a conflict without changing the current record. The component preserves unsaved draft text. Saving a deleted record never falls through to creating a replacement.
+`NoteRequest` validates bounded note payloads; `NoteResource` exposes only public note fields. The list endpoint supports `q` (title/content search), `important`, and bounded `per_page` (1–50, default 10). Database ordering uses `created_at DESC, id DESC` for deterministic pagination. Indexes support owner and importance filtering.
 
-## Bounded lists
+## Sessions and CSRF
 
-The component queries 10 notes per page rather than serializing a complete collection into public state. Ordering uses created_at followed by ID so equal timestamps remain deterministic. Indexes support ownership, importance, and ordering. Filters reset the page; stable wire:key values preserve list identity.
+Authentication uses Laravel's `web` session guard. Sanctum's stateful API middleware accepts same-origin session cookies. React first gets `/sanctum/csrf-cookie` and Axios sends CSRF headers with mutations. Password reset links are Laravel-generated; account access is not based on localStorage bearer tokens.
 
-## Local development
+## Local architecture
 
-SQLite and a single Docker service keep the project straightforward to run on a PC. Node compiles local CSS/JS when building the image; PHP serves the app, and a named volume preserves notes and the local key. No other services or delivery infrastructure are included.
+Docker Compose builds Vite assets in a Node 22 stage and serves Laravel using PHP 8.4 and SQLite. A named volume preserves the local database and encryption key. CI runs in-memory PHP tests and a separate disposable SQLite file for browser tests. This project intentionally avoids deployment/cluster infrastructure.

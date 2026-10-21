@@ -1,128 +1,113 @@
-# Notes · Laravel & Livewire
+# Notes — Laravel 13 API + React SPA
 
-A private notes application focused on Laravel development: authentication, authorization, validation, reactive forms, and tested data handling. Docker provides a simple way to run it on your PC.
-
-![Notes workspace](docs/screenshots/notes-desktop.png)
+A private, responsive notes application built with **Laravel 13**, **PHP 8.4**, **React 19**, **Tailwind CSS 4** and **Vite 6**. The browser talks to a versioned Laravel JSON API through secure, same-origin session cookies.
 
 ## Features
 
-- Register, sign in, sign out, and reset your password.
+- Register, sign in, sign out, and request or complete a password reset.
 - Create, edit, delete, and mark notes as important.
-- Private notes with ownership-scoped queries and authorization policies.
-- Important-only filtering and pagination (10 notes per page).
-- Locked Livewire IDs and atomic version checks for safe edits and deletes.
-- Preserved drafts when a record changes or is deleted in another session.
-- Bounded validation, escaped output, authentication throttling, and CSRF protection.
-- Responsive forms with accessible labels, edit focus, delete confirmation, and request failure feedback.
-- Local CSS/JS assets, PHP feature tests, browser tests, and PHP static analysis.
+- Search titles and content, filter important notes, and browse ten notes per page.
+- All notes are private: users cannot view, change, or delete another user's notes.
+- Optimistic concurrency protection prevents stale edits and deletes; HTTP 409 conflicts leave the editor's draft intact.
+- Responsive React interface with Tailwind CSS 4, accessible form labels, focus styles, delete confirmation and user feedback.
+- Laravel Form Requests, API Resources, a NoteService and a NotePolicy.
+- PHPUnit feature tests, Laravel Pint, React production build, and Chromium browser tests with axe accessibility checks.
 
-Livewire updates the current page through HTTP requests without reloading it. Separate browsers do not receive pushed updates; conflicting writes are detected when saving.
+This is a learning/portfolio application, not an audited production service. Notes do not sync between browser tabs in real time; conflicts are detected when saving.
 
-## Laravel has not been upgraded
+## Start on Ubuntu with Docker
 
-**Laravel remains pinned to its original version, 10.49.1.** Compatible dependencies were updated, but Laravel 10 security support ended on 4 February 2025. Four Composer advisory entries remain in Laravel itself, including overlapping entries for an email-validation issue.
-
-This is a local learning/portfolio application, not a claim of current framework support or a clean Composer audit. See [known security limitations](docs/SECURITY.md), the [audit snapshot](docs/composer-audit.json), and the [official support table](https://laravel.com/framework/docs/10.x/releases). A future framework upgrade is still needed.
-
-## Run on your PC with Docker
-
-Requirements: Docker Engine and Docker Compose. You do not need PHP, Composer, Node, or a database server installed on your PC.
+You need only Docker Engine and Docker Compose. **No local PHP, Composer or Node installation is necessary.**
 
 ```bash
 git clone https://github.com/dionis1/notes-app.git
 cd notes-app
 docker compose up --build -d
+docker compose ps
 ```
 
-Open [http://localhost:8000](http://localhost:8000) and create your account. The first build may take several minutes. If your machine requires it, prefix Docker commands with `sudo`.
+Open **http://localhost:8000** and create an account. The first build takes several minutes. The image builds React assets with Node 22 and runs Laravel with PHP 8.4.
 
 ```bash
-# Check the app and its startup logs:
-docker compose ps
 docker compose logs --tail=50 app
-
-# Run the Laravel tests inside Docker:
 docker compose exec app php artisan test
-
-# Stop the application while preserving your notes:
 docker compose down
 ```
 
-Notes, sessions, and the generated local key persist in a named volume. **`docker compose down -v` deletes that data.** The app binds to localhost only. Rebuild after code changes. For another port:
+A named Docker volume retains your notes database and local application key. **Do not use `docker compose down -v` if you want to keep your notes**; `-v` deletes the volume.
 
-```bash
-APP_PORT=8001 docker compose up --build -d
-```
+To use a different port: `APP_PORT=8001 docker compose up --build -d`. The application binds to localhost by default.
 
-Password reset links are logged locally instead of emailed. Request a reset and inspect `docker compose logs app`; keep those links private. There is no seeded account or default password.
+## Start without Docker
 
-## Run with local PHP
-
-Requirements: PHP 8.2 with PDO SQLite, mbstring and DOM/XML, Composer 2, and Node 22.
+Requirements: **PHP 8.4**, Composer 2, Node 22 with npm, and PHP PDO SQLite, mbstring, DOM/XML.
 
 ```bash
 composer install
 npm ci
 cp .env.example .env
 php artisan key:generate
+mkdir -p storage/app
 touch storage/app/notes.sqlite
 php artisan migrate
 npm run build
 php artisan serve
 ```
 
-Open [http://localhost:8000](http://localhost:8000). For CSS/JS development, run `npm run dev` in a second terminal. `.env.example` uses SQLite and log mail.
+Open http://localhost:8000. For React/Tailwind development, run `npm run dev` in another terminal. The frontend and API should share the same origin for Sanctum's cookie-based authentication.
 
-## Tests and code checks
+If you already have notes in `storage/app/notes.sqlite`, **back it up first**. The migration preserves records; do not run `migrate:fresh` on valuable data. Notes predating ownership are left unassigned and cannot be viewed by a new account automatically.
+
+## API
+
+All note endpoints are under `/api/v1` and require `auth:sanctum`. The React client obtains `/sanctum/csrf-cookie` before authentication requests, and Axios sends the CSRF token with state-changing requests.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/me` | Safe current-user summary |
+| GET | `/api/v1/notes` | Paginated notes; `q`, `important`, `page`, `per_page` |
+| POST | `/api/v1/notes` | Create a note |
+| GET | `/api/v1/notes/{id}` | Read an owned note |
+| PATCH/PUT | `/api/v1/notes/{id}` | Update using the required `version` |
+| DELETE | `/api/v1/notes/{id}` | Delete using the required `version` |
+
+Credentials and recovery: `POST /register`, `POST /login`, `POST /logout`, `POST /forgot-password`, `POST /reset-password`.
+
+API errors: **401** for unauthenticated access, **404** for foreign/missing notes, **422** for invalid input and **409** for concurrent edits/deletes. The server returns explicit API Resources rather than entire Eloquent records. Filtering and pagination execute in the database.
+
+## Tests and quality checks
 
 ```bash
 php artisan test
 vendor/bin/pint --test
-vendor/bin/phpstan analyse --no-progress
+composer validate --no-check-publish
+npm ci
 npm run build
-composer audit
-npm audit
-```
-
-`composer audit` currently reports the known Laravel findings described above. The test configuration explicitly overrides both environment and server values so tests use SQLite in memory, array sessions, and a test-only key even when Docker has different settings.
-
-The PHP suite covers authentication and recovery, session revocation, throttling, ownership, forged IDs, locked properties, validation limits, filtering, pagination, escaping, concurrent edits, and deleted records. Browser checks exercise registration, CRUD, filtering, reload persistence, account isolation, logout, CSRF rejection, mobile overflow, and serious/critical accessibility findings.
-
-To run the browser tests with local PHP:
-
-```bash
 npx playwright install --with-deps chromium
 npm run test:browser
 ```
 
-Or use an installed Chrome: `CHROME_BIN=/usr/bin/google-chrome npm run test:browser`. The tests start a separate server on port 8010 and reset only `/tmp/notes-browser.sqlite`. That database is disposable. Screenshots are captured from the browser test with synthetic account and note data. Automated accessibility checks do not replace manual keyboard and screen-reader testing.
+GitHub Actions runs Laravel/Pint, the React production build, and Playwright with Chromium and axe-core. PHP tests use in-memory SQLite. The browser test starts a separate development server on port 8010, resetting **only** `/tmp/notes-browser.sqlite`; never point it at a real notes database.
 
-## Screenshots
+For dependency reviews, run `composer audit` and `npm audit`. A passing automated test suite is not a security audit.
 
-### Sign in
+## Code organization
 
-![Sign-in page](docs/screenshots/sign-in.png)
+- `app/Http/Controllers/Api/V1/NoteController.php`: versioned HTTP endpoints and owner-scoped reads.
+- `app/Http/Requests/NoteRequest.php`: validated note payloads.
+- `app/Http/Resources/NoteResource.php`: controlled JSON responses.
+- `app/Services/NoteService.php`: scoped operations and version-aware writes.
+- `app/Policies/NotePolicy.php`: ownership authorization.
+- `app/Http/Controllers/AuthController.php`: sessions and password recovery.
+- `resources/js/`: React SPA, Axios client, authentication and notes pages.
+- `resources/css/app.css`: Tailwind 4 entry point.
+- `tests/Feature` and `tests/Browser`: server and real-browser regression tests.
 
-### Edit a note
+See [architecture decisions](docs/ARCHITECTURE.md) and [security considerations](docs/SECURITY.md). Previous Livewire screenshots and implementation history remain available through Git history.
 
-![Editing a note](docs/screenshots/edit-note.png)
+## Limitations
 
-### Mobile
-
-<img src="docs/screenshots/notes-mobile.png" alt="Notes workspace on a 390-pixel-wide viewport" width="390">
-
-## Laravel structure
-
-- `app/Livewire/Notes.php`: validated form state, filtering, pagination, and user feedback.
-- `app/Services/NoteService.php`: owner-scoped lookups and atomic version-aware mutations.
-- `app/Policies/NotePolicy.php`: explicit authorization checks.
-- `app/Http/Controllers/AuthController.php`: account, session, and password recovery flows.
-- `tests/Feature`: database-backed Laravel and Livewire tests.
-- `tests/Browser`: real browser interaction and accessibility checks.
-
-See [Laravel design decisions](docs/ARCHITECTURE.md) for the reasoning behind those boundaries.
-
-Anonymous notes from the original schema remain unowned and invisible after migration. An operator must verify ownership before assigning them; registration never automatically claims old notes.
+No multi-user note sharing, rich-text editor, file attachments, background synchronization or real-time collaboration. Local password-reset emails are logged; no external mail provider is configured. Production deployment, backups and a security review require additional work.
 
 ## License
 
