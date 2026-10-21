@@ -12,6 +12,7 @@
     <header class="site-header"><a class="brand" href="{{ route('notes') }}"><span class="brand-mark">N</span> Notes<span class="brand-detail">PERSONAL WORKSPACE</span></a>
         @auth <div class="account"><span>{{ auth()->user()->name }}</span><form action="{{ route('logout') }}" method="POST">@csrf<button class="quiet" type="submit">Sign out</button></form></div> @endauth
     </header>
+    <div id="request-error" class="error" role="alert" hidden></div>
     <main id="main">{{ $slot }}</main>
     <footer>Built with Laravel & Livewire · Private by design</footer>
     @livewireScripts
