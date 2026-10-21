@@ -20,7 +20,7 @@ class SpaAuthApiTest extends TestCase
         $this->assertAuthenticated();
         $this->getJson('/api/v1/me')->assertOk()->assertJsonPath('data.email', 'writer@example.test');
         $this->postJson('/logout')->assertOk();
-        $this->assertGuest();
+        $this->assertGuest('web');
         $this->getJson('/api/v1/me')->assertUnauthorized();
     }
 
