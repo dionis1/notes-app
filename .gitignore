@@ -21,5 +21,5 @@ yarn-error.log
 /storage/app/*.sqlite*
 /test-results/
 /playwright-report/
-/storage/app/backups/
 /storage/app/docker-app-key
+

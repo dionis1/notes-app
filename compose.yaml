@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    environment:
+      APP_NAME: Notes
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: "http://localhost:${APP_PORT:-8000}"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/storage/app/notes.sqlite
+      CACHE_DRIVER: file
+      SESSION_DRIVER: file
+      LOG_CHANNEL: stderr
+      MAIL_MAILER: log
+    volumes:
+      - notes-storage:/var/www/html/storage
+
+volumes:
+  notes-storage:
