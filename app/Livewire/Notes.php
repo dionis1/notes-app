@@ -2,93 +2,118 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
+use App\Models\User;
 use App\Services\NoteService;
-use App\Repositories\Interfaces\NoteRepositoryInterface;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Locked;
+use Livewire\Component;
+use Livewire\WithPagination;
 
 class Notes extends Component
 {
-    public $notes = [];
-    public $title = '';
-    public $content = '';
-    public $is_important = false;
-    public $noteId = null;
-    public $filterImportant = false;
+    use WithPagination;
 
-    protected $rules = [
-        'title' => 'required|string|max:255',
-        'content' => 'required|string',
-        'is_important' => 'boolean',
-    ];
+    public string $title = '';
+
+    public string $content = '';
+
+    public bool $is_important = false;
+
+    public bool $filterImportant = false;
+
+    #[Locked]
+    public ?int $noteId = null;
+
+    #[Locked]
+    public ?int $version = null;
 
     protected NoteService $service;
 
-    public function __construct()
+    protected function rules(): array
     {
-        $this->service = app(NoteService::class);
+        return ['title' => 'required|string|max:255', 'content' => 'required|string|max:10000', 'is_important' => 'boolean'];
     }
 
-    public function mount()
+    public function boot(NoteService $service): void
     {
-        $this->loadNotes();
+        $this->service = $service;
     }
 
-    public function loadNotes()
+    protected function user(): User
     {
-        $this->notes = $this->service->getAllNotes($this->filterImportant);
+        $user = Auth::user();
+        abort_unless($user instanceof User, 403);
+
+        return $user;
     }
 
-    public function toggleFilter()
+    public function toggleFilter(): void
     {
-        $this->filterImportant = !$this->filterImportant;
-        $this->loadNotes();
+        $this->filterImportant = ! $this->filterImportant;
+        $this->resetPage();
     }
 
-     
-    public function edit($id)
+    public function edit(int $id): void
     {
-            $note = $this->service->findNote($id);
-
-            if (!$note) {
-                return;
-            }
-
-            $this->noteId = $note->id;
-            $this->title = $note->title;
-            $this->content = $note->content;
-            $this->is_important = $note->is_important;
+        try {
+            $note = $this->service->find($this->user(), $id);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+        $this->authorize('update', $note);
+        $this->resetValidation();
+        $this->noteId = $note->id;
+        $this->version = $note->version;
+        $this->title = $note->title;
+        $this->content = $note->content;
+        $this->is_important = $note->is_important;
+        $this->dispatch('editing');
     }
 
-
-
-    public function save()
+    public function save(): void
     {
+        $this->title = trim($this->title);
+        $this->content = trim($this->content);
         $data = $this->validate();
+        try {
+            $this->service->save($this->user(), $this->noteId, $this->version, $data);
+        } catch (ModelNotFoundException) {
+            $this->addError('conflict', 'This note no longer exists. Your draft is preserved; cancel to create a new note.');
 
-        $message = $this->service->saveNote($this->noteId, $data);
-
-        session()->flash('message', $message);
-        $this->dispatch('message', $message);
-
+            return;
+        }
+        $message = $this->noteId ? 'Note updated' : 'Note created';
         $this->resetForm();
-        $this->loadNotes();
-    }
-
-    public function delete($id)
-    {
-        $message = $this->service->deleteNote($id);
+        $this->resetPage();
         session()->flash('message', $message);
-        $this->dispatch('message', $message);
-        $this->loadNotes();
     }
 
-    public function resetForm()
+    public function delete(int $id, int $version): void
     {
-        $this->reset(['title', 'content', 'is_important', 'noteId']);
+        try {
+            $this->service->delete($this->user(), $id, $version);
+        } catch (ModelNotFoundException) {
+            abort(404);
+        }
+        if ($this->noteId === $id) {
+            $this->resetForm();
+        }
+        $this->resetPage();
+        session()->flash('message', 'Note deleted');
+    }
+
+    public function resetForm(): void
+    {
+        $this->reset(['title', 'content', 'is_important', 'noteId', 'version']);
+        $this->resetValidation();
     }
 
     public function render()
     {
-        return view('livewire.notes')->layout('components.layouts.app');
+        $notes = $this->user()->notes()->when($this->filterImportant, fn ($query) => $query->where('is_important', true))
+            ->orderByDesc('created_at')->orderByDesc('id')->paginate(10);
+
+        return view('livewire.notes', ['notes' => $notes])->layout('components.layouts.app');
     }
 }

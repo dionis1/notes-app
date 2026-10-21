@@ -3,8 +3,6 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Repositories\Interfaces\NoteRepositoryInterface;
-use App\Repositories\NoteRepository;
 
 class AppServiceProvider extends ServiceProvider
 {

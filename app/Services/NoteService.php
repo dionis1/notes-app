@@ -3,62 +3,40 @@
 namespace App\Services;
 
 use App\Models\Note;
-use App\Repositories\Interfaces\NoteRepositoryInterface;
-use Illuminate\Support\Collection;
+use App\Models\User;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class NoteService
 {
-    protected NoteRepositoryInterface $repo;
-
-    public function __construct(NoteRepositoryInterface $repo)
+    public function find(User $user, int $id): Note
     {
-        $this->repo = $repo;
+        return $user->notes()->findOrFail($id);
     }
 
-    /**
-     * Get all notes, optionally only important ones.
-     */
-    public function getAllNotes(bool $importantOnly = false): Collection
+    public function save(User $user, ?int $id, ?int $version, array $data): void
     {
-        return $this->repo->all($importantOnly);
-    }
+        if ($id === null) {
+            $user->notes()->create($data);
 
-    /**
-     * Find a specific note by its ID.
-     */
-    public function findNote(int $id): ?Note
-    {
-        return $this->repo->find($id);
-    }
-
-    /**
-     * Create or update a note.
-     */
-    public function saveNote(?int $id, array $data): string
-    {
-        if ($id) {
-            $note = $this->repo->find($id);
-            if ($note) {
-                $this->repo->update($note, $data);
-                return 'Note updated';
-            }
+            return;
         }
-
-        $this->repo->create($data);
-        return 'Note created';
+        $note = $this->find($user, $id);
+        Gate::forUser($user)->authorize('update', $note);
+        // Compare and update in one SQL statement: timestamps alone can miss same-second edits.
+        $changed = $user->notes()->whereKey($id)->where('version', $version)
+            ->update($data + ['version' => $note->version + 1]);
+        if ($changed !== 1) {
+            throw ValidationException::withMessages(['conflict' => 'This note changed in another session. Your draft is preserved. Reload the note before saving again.']);
+        }
     }
 
-    /**
-     * Delete a note by ID.
-     */
-    public function deleteNote(int $id): string
+    public function delete(User $user, int $id, int $version): void
     {
-        $note = $this->repo->find($id);
-        if ($note) {
-            $this->repo->delete($note);
-            return 'Note deleted';
+        $note = $this->find($user, $id);
+        Gate::forUser($user)->authorize('delete', $note);
+        if ($user->notes()->whereKey($id)->where('version', $version)->delete() !== 1) {
+            throw ValidationException::withMessages(['conflict' => 'This note changed. Reload it before deleting.']);
         }
-
-        return 'Note not found';
     }
 }
