@@ -42,7 +42,9 @@ class AuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('notes');
+        return $request->expectsJson()
+            ? response()->json(['data' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email]], 201)
+            : redirect()->route('notes');
     }
 
     public function login(Request $request)
@@ -56,7 +58,9 @@ class AuthController extends Controller
         }
         $request->session()->regenerate();
 
-        return redirect()->intended(route('notes'));
+        return $request->expectsJson()
+            ? response()->json(['message' => 'Signed in.'])
+            : redirect()->intended(route('notes'));
     }
 
     public function logout(Request $request)
@@ -65,7 +69,9 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        return $request->expectsJson()
+            ? response()->json(['message' => 'Signed out.'])
+            : redirect()->route('login');
     }
 
     public function forgot(Request $request)
@@ -76,7 +82,11 @@ class AuthController extends Controller
         $request->validate(['email' => $this->emailRules()]);
         Password::sendResetLink($request->only('email'));
 
-        return back()->with('status', 'If that account exists, a password reset link has been sent.');
+        $message = 'If that account exists, a password reset link has been sent.';
+
+        return $request->expectsJson()
+            ? response()->json(['message' => $message])
+            : back()->with('status', $message);
     }
 
     public function reset(Request $request)
@@ -96,6 +106,8 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => __($status)]);
         }
 
-        return redirect()->route('login')->with('status', 'Password reset. Please sign in.');
+        return $request->expectsJson()
+            ? response()->json(['message' => 'Password reset. Please sign in.'])
+            : redirect()->route('login')->with('status', 'Password reset. Please sign in.');
     }
 }
