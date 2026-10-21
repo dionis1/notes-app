@@ -10,10 +10,10 @@ export default defineConfig({
   },
   webServer: {
     command: 'sh scripts/browser-server.sh',
-    url: 'http://127.0.0.1:8010/health',
+    url: 'http://127.0.0.1:8010/login',
     reuseExistingServer: false,
     env: {
-      APP_ENV: 'testing', APP_DEBUG: 'false',
+      APP_ENV: 'local', APP_DEBUG: 'false',
       APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
       APP_URL: 'http://127.0.0.1:8010', DB_CONNECTION: 'sqlite',
       DB_DATABASE: '/tmp/notes-browser.sqlite', SESSION_DRIVER: 'file', MAIL_MAILER: 'log',

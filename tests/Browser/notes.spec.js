@@ -4,6 +4,8 @@ import AxeBuilder from '@axe-core/playwright';
 test('private notes work through registration, CRUD, filtering, reload and logout', async ({ page, browser }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  const rejected = await page.request.post('/register', { data: { name: 'No token', email: 'no-token@example.test', password: 'no-token-password' } });
+  expect(rejected.status()).toBe(419);
   await page.goto('/login');
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await page.screenshot({ path: 'docs/screenshots/sign-in.png', fullPage: true });

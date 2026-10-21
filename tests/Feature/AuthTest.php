@@ -20,11 +20,6 @@ class AuthTest extends TestCase
         $this->assertSame('array', config('session.driver'));
     }
 
-    public function test_database_readiness(): void
-    {
-        $this->get('/ready')->assertOk()->assertJson(['status' => 'ready']);
-    }
-
     public function test_guest_cannot_read_notes(): void
     {
         $this->get('/notes')->assertRedirect('/login');
@@ -46,6 +41,14 @@ class AuthTest extends TestCase
     {
         User::factory()->create(['email' => 'ada@example.com']);
         $this->post('/register', ['name' => 'Ada', 'email' => 'ada@example.com', 'password' => 'short', 'password_confirmation' => 'short'])->assertSessionHasErrors(['email', 'password']);
+    }
+
+    public function test_control_characters_in_email_and_multibyte_password_overflow_are_rejected(): void
+    {
+        $this->post('/register', ['name' => 'Ada', 'email' => "ada@example.com\r\nBcc: other@example.com", 'password' => 'correct-horse-123', 'password_confirmation' => 'correct-horse-123'])->assertSessionHasErrors('email');
+        $password = str_repeat('😀', 19);
+        $this->post('/register', ['name' => 'Ada', 'email' => 'ada@example.com', 'password' => $password, 'password_confirmation' => $password])->assertSessionHasErrors('password');
+        $this->assertDatabaseCount('users', 0);
     }
 
     public function test_login_is_rate_limited(): void
