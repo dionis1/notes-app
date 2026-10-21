@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -20,7 +21,7 @@ return new class extends Migration
     public function down(): void
     {
         // Laravel 10 cannot drop SQLite foreign keys in place. Rebuild the legacy schema.
-        if (\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite') {
+        if (DB::getDriverName() === 'sqlite') {
             Schema::create('notes_before_ownership', function (Blueprint $table) {
                 $table->id();
                 $table->string('title');
@@ -28,9 +29,10 @@ return new class extends Migration
                 $table->boolean('is_important')->default(false);
                 $table->timestamps();
             });
-            \Illuminate\Support\Facades\DB::statement('INSERT INTO notes_before_ownership (id, title, content, is_important, created_at, updated_at) SELECT id, title, content, is_important, created_at, updated_at FROM notes');
+            DB::statement('INSERT INTO notes_before_ownership (id, title, content, is_important, created_at, updated_at) SELECT id, title, content, is_important, created_at, updated_at FROM notes');
             Schema::drop('notes');
             Schema::rename('notes_before_ownership', 'notes');
+
             return;
         }
 

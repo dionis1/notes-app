@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Note;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class BackupTest extends TestCase
@@ -13,8 +12,6 @@ class BackupTest extends TestCase
 
     public function test_backup_restores_notes_and_passes_integrity_check(): void
     {
-        // VACUUM cannot run within DatabaseMigrations's wrapping transaction.
-        DB::rollBack();
         $note = Note::factory()->create(['title' => 'Restore me']);
         $path = sys_get_temp_dir().'/notes-restore-'.bin2hex(random_bytes(6)).'.sqlite';
         try {

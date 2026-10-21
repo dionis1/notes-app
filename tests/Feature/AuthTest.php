@@ -13,6 +13,18 @@ class AuthTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_test_environment_is_isolated_from_container_settings(): void
+    {
+        $this->assertTrue(app()->environment('testing'));
+        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        $this->assertSame('array', config('session.driver'));
+    }
+
+    public function test_database_readiness(): void
+    {
+        $this->get('/ready')->assertOk()->assertJson(['status' => 'ready']);
+    }
+
     public function test_guest_cannot_read_notes(): void
     {
         $this->get('/notes')->assertRedirect('/login');
