@@ -16,6 +16,7 @@ export default defineConfig({
       APP_ENV: 'local', APP_DEBUG: 'false',
       APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
       APP_URL: 'http://127.0.0.1:8010', DB_CONNECTION: 'sqlite',
+      SANCTUM_STATEFUL_DOMAINS: '127.0.0.1:8010,localhost:8010', CACHE_STORE: 'array',
       DB_DATABASE: '/tmp/notes-browser.sqlite', SESSION_DRIVER: 'file', MAIL_MAILER: 'log',
     },
   },
