@@ -51,6 +51,15 @@ class AuthTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
+    public function test_changing_password_revokes_an_existing_session(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user)->get('/notes')->assertOk();
+        $user->update(['password' => 'a-different-password']);
+        $this->get('/notes')->assertRedirect('/login');
+        $this->assertGuest();
+    }
+
     public function test_login_is_rate_limited(): void
     {
         for ($i = 0; $i < 5; $i++) {

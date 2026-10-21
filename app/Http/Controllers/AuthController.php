@@ -14,13 +14,27 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    private function emailRules(): array
+    {
+        return ['required', 'string', 'email', 'max:255', 'not_regex:/[\\x00-\\x20\\x7f]/'];
+    }
+
+    private function passwordRules(): array
+    {
+        return ['required', 'string', 'confirmed', PasswordRule::min(12), 'max:72', function (string $attribute, mixed $value, \Closure $fail) {
+            if (is_string($value) && (strlen($value) > 72 || str_contains($value, "\0"))) {
+                $fail('The password must be at most 72 bytes and cannot contain null characters.');
+            }
+        }];
+    }
+
     public function register(Request $request)
     {
         $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'confirmed', PasswordRule::min(12), 'max:72'],
+            'email' => [...$this->emailRules(), 'unique:users'],
+            'password' => $this->passwordRules(),
         ]);
         $user = User::create($data);
         Auth::login($user);
@@ -32,7 +46,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
-        $credentials = $request->validate(['email' => ['required', 'email'], 'password' => ['required', 'string']]);
+        $credentials = $request->validate(['email' => $this->emailRules(), 'password' => ['required', 'string']]);
         if (! Auth::attempt($credentials)) {
             throw ValidationException::withMessages(['email' => 'The credentials do not match our records.']);
         }
@@ -53,7 +67,7 @@ class AuthController extends Controller
     public function forgot(Request $request)
     {
         $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
-        $request->validate(['email' => ['required', 'email']]);
+        $request->validate(['email' => $this->emailRules()]);
         Password::sendResetLink($request->only('email'));
 
         return back()->with('status', 'If that account exists, a password reset link has been sent.');
@@ -63,8 +77,8 @@ class AuthController extends Controller
     {
         $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
         $request->validate([
-            'token' => ['required'], 'email' => ['required', 'email'],
-            'password' => ['required', 'confirmed', PasswordRule::min(12), 'max:72'],
+            'token' => ['required'], 'email' => $this->emailRules(),
+            'password' => $this->passwordRules(),
         ]);
         $status = Password::reset($request->only('email', 'password', 'password_confirmation', 'token'), function (User $user, string $password) {
             $user->forceFill(['password' => Hash::make($password), 'remember_token' => Str::random(60)])->save();

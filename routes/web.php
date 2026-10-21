@@ -18,4 +18,4 @@ Route::middleware('guest')->group(function () {
     });
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
-Route::get('/notes', Notes::class)->middleware('auth')->name('notes');
+Route::get('/notes', Notes::class)->middleware(['auth', 'auth.session'])->name('notes');

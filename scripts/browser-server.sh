@@ -4,4 +4,4 @@ set -eu
 rm -f /tmp/notes-browser.sqlite
 touch /tmp/notes-browser.sqlite
 php artisan migrate --force --no-interaction
-exec php artisan serve --host=127.0.0.1 --port=8010
+exec php artisan serve --host=127.0.0.1 --port=8010 --no-reload
