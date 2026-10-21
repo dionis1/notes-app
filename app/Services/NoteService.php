@@ -14,12 +14,10 @@ class NoteService
         return $user->notes()->findOrFail($id);
     }
 
-    public function save(User $user, ?int $id, ?int $version, array $data): void
+    public function save(User $user, ?int $id, ?int $version, array $data): Note
     {
         if ($id === null) {
-            $user->notes()->create($data);
-
-            return;
+            return $user->notes()->create($data);
         }
         $note = $this->find($user, $id);
         Gate::forUser($user)->authorize('update', $note);
@@ -29,6 +27,8 @@ class NoteService
         if ($changed !== 1) {
             throw ValidationException::withMessages(['conflict' => 'This note changed in another session. Your draft is preserved. Reload the note before saving again.']);
         }
+
+        return $this->find($user, $id);
     }
 
     public function delete(User $user, int $id, int $version): void
