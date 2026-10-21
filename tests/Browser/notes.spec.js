@@ -19,7 +19,7 @@ test('private notes work through registration, CRUD, filtering, reload and logou
   for (const [title, content, important] of [
     ['A thought worth keeping', 'Make room for the small ideas. They often become the most useful ones.', false],
     ['Friday reflection', 'What went well this week?\n\nWe shipped a smaller feature, asked better questions, and left the code easier to understand.', false],
-    ['Before the next release', 'Review the ownership checks.\nRun the tests and restore a backup.\nWrite down what we learned.', true],
+    ['Ideas to revisit', 'Review the ownership checks.\nCheck the validation edge cases.\nWrite down what we learned.', true],
   ]) {
     await page.getByLabel('Title', { exact: true }).fill(title);
     await page.getByLabel('Your note').fill(content);
@@ -32,7 +32,7 @@ test('private notes work through registration, CRUD, filtering, reload and logou
   expect(accessibility.violations.filter(v => ['critical', 'serious'].includes(v.impact))).toEqual([]);
   await page.getByRole('button', { name: 'Important only', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Friday reflection', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Before the next release', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ideas to revisit', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show all notes', exact: true }).click();
   await page.getByRole('button', { name: 'Edit Friday reflection', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit note', exact: true })).toBeVisible();
@@ -56,7 +56,7 @@ test('private notes work through registration, CRUD, filtering, reload and logou
   await other.getByLabel('Confirm password').fill('portfolio-demo-456');
   await other.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(other.getByRole('heading', { name: 'Room for your next idea' })).toBeVisible();
-  await expect(other.getByText('Before the next release', { exact: true })).toHaveCount(0);
+  await expect(other.getByText('Ideas to revisit', { exact: true })).toHaveCount(0);
   await context.close();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: 'Delete Weekly reflection', exact: true }).click();
