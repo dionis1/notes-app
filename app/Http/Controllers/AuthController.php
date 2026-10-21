@@ -30,7 +30,9 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
-        $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => strtolower(trim($email))]);
+        }
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'email' => [...$this->emailRules(), 'unique:users'],
@@ -45,7 +47,9 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => strtolower(trim($email))]);
+        }
         $credentials = $request->validate(['email' => $this->emailRules(), 'password' => ['required', 'string']]);
         if (! Auth::attempt($credentials)) {
             throw ValidationException::withMessages(['email' => 'The credentials do not match our records.']);
@@ -66,7 +70,9 @@ class AuthController extends Controller
 
     public function forgot(Request $request)
     {
-        $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => strtolower(trim($email))]);
+        }
         $request->validate(['email' => $this->emailRules()]);
         Password::sendResetLink($request->only('email'));
 
@@ -75,9 +81,11 @@ class AuthController extends Controller
 
     public function reset(Request $request)
     {
-        $request->merge(['email' => strtolower(trim((string) $request->input('email', '')))]);
+        if (is_string($email = $request->input('email'))) {
+            $request->merge(['email' => strtolower(trim($email))]);
+        }
         $request->validate([
-            'token' => ['required'], 'email' => $this->emailRules(),
+            'token' => ['required', 'string', 'max:255'], 'email' => $this->emailRules(),
             'password' => $this->passwordRules(),
         ]);
         $status = Password::reset($request->only('email', 'password', 'password_confirmation', 'token'), function (User $user, string $password) {

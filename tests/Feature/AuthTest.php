@@ -60,6 +60,12 @@ class AuthTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_malformed_credential_types_return_validation_errors(): void
+    {
+        $this->post('/login', ['email' => ['bad'], 'password' => 'example-password'])->assertSessionHasErrors('email');
+        $this->post('/reset-password', ['token' => ['bad'], 'email' => 'ada@example.com', 'password' => 'new-password-123', 'password_confirmation' => 'new-password-123'])->assertSessionHasErrors('token');
+    }
+
     public function test_login_is_rate_limited(): void
     {
         for ($i = 0; $i < 5; $i++) {
