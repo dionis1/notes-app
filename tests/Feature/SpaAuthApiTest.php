@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
 
 class SpaAuthApiTest extends TestCase
@@ -21,6 +22,8 @@ class SpaAuthApiTest extends TestCase
         $this->getJson('/api/v1/me')->assertOk()->assertJsonPath('data.email', 'writer@example.test');
         $this->postJson('/logout')->assertOk();
         $this->assertGuest('web');
+        // Requests share the test container, unlike separate browser requests.
+        Auth::forgetGuards();
         $this->getJson('/api/v1/me')->assertUnauthorized();
     }
 
