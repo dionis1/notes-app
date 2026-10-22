@@ -12,5 +12,7 @@ if [ "${DB_CONNECTION:-}" = sqlite ] && [ "${DB_DATABASE:-}" != ':memory:' ]; th
     mkdir -p "$(dirname "$DB_DATABASE")"
     touch "$DB_DATABASE"
 fi
-php artisan migrate --force --no-interaction
+if [ "${1:-}" = php ] && [ "${2:-}" = artisan ] && [ "${3:-}" = serve ]; then
+    php artisan migrate --force --no-interaction
+fi
 exec "$@"
