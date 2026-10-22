@@ -7,13 +7,33 @@ use App\Models\User;
 
 class NotePolicy
 {
-    public function update(User $user, Note $note): bool
+    public function viewAny(User $user): bool
+    {
+        return true;
+    }
+
+    public function create(User $user): bool
+    {
+        return true;
+    }
+
+    public function view(User $user, Note $note): bool
     {
         return $note->user_id === $user->id;
     }
 
+    public function update(User $user, Note $note): bool
+    {
+        return $this->view($user, $note);
+    }
+
     public function delete(User $user, Note $note): bool
     {
-        return $this->update($user, $note);
+        return $this->view($user, $note);
+    }
+
+    public function restore(User $user, Note $note): bool
+    {
+        return $this->view($user, $note);
     }
 }

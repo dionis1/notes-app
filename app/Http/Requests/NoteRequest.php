@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\NoteRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class NoteRequest extends FormRequest
@@ -13,13 +14,6 @@ class NoteRequest extends FormRequest
 
     public function rules(): array
     {
-        $updating = $this->isMethod('put') || $this->isMethod('patch');
-
-        return [
-            'title' => [$updating ? 'sometimes' : 'required', 'string', 'max:255'],
-            'content' => [$updating ? 'sometimes' : 'required', 'string', 'max:10000'],
-            'is_important' => ['sometimes', 'boolean'],
-            'version' => [$updating ? 'required' : 'prohibited', 'integer', 'min:1'],
-        ];
+        return NoteRules::content(! $this->isMethod('post'));
     }
 }

@@ -2,31 +2,33 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Actions\CreateNoteAction;
+use App\Actions\DeleteNoteAction;
+use App\Actions\RestoreNoteRevisionAction;
+use App\Actions\UpdateNoteAction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\NoteFilterRequest;
 use App\Http\Requests\NoteRequest;
+use App\Http\Requests\NoteVersionRequest;
+use App\Http\Requests\RevisionFilterRequest;
 use App\Http\Resources\NoteResource;
-use App\Services\NoteService;
+use App\Http\Resources\NoteRevisionResource;
+use App\Models\Note;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Illuminate\Support\Facades\Gate;
 
 class NoteController extends Controller
 {
-    public function index(Request $request): AnonymousResourceCollection
+    public function index(NoteFilterRequest $request): AnonymousResourceCollection
     {
-        $filters = $request->validate([
-            'q' => ['nullable', 'string', 'max:100'],
-            'important' => ['nullable', 'boolean'],
-            'per_page' => ['nullable', 'integer', 'between:1,50'],
-        ]);
-
+        Gate::authorize('viewAny', Note::class);
+        $filters = $request->validated();
         $notes = $request->user()->notes()
             ->when(isset($filters['important']), fn ($query) => $query->where('is_important', (bool) $filters['important']))
-            ->when(! empty($filters['q']), fn ($query) => $query->where(function ($query) use ($filters) {
-                $query->where('title', 'like', '%'.$filters['q'].'%')
-                    ->orWhere('content', 'like', '%'.$filters['q'].'%');
+            ->when(isset($filters['q']) && $filters['q'] !== '', fn ($query) => $query->where(function ($query) use ($filters): void {
+                $query->where('title', 'like', '%'.$filters['q'].'%')->orWhere('content', 'like', '%'.$filters['q'].'%');
             }))
             ->orderByDesc('created_at')->orderByDesc('id')
             ->paginate($filters['per_page'] ?? 10)->withQueryString();
@@ -34,51 +36,46 @@ class NoteController extends Controller
         return NoteResource::collection($notes);
     }
 
-    public function show(Request $request, int $note, NoteService $service): NoteResource
+    public function show(Request $request, int $note): NoteResource
     {
-        return new NoteResource($service->find($request->user(), $note));
+        return new NoteResource($this->owned($request, $note));
     }
 
-    public function store(NoteRequest $request, NoteService $service): JsonResponse
+    public function store(NoteRequest $request, CreateNoteAction $action): JsonResponse
     {
-        $note = $service->save($request->user(), null, null, $request->validated());
-
-        return (new NoteResource($note))->response()->setStatusCode(201);
+        return (new NoteResource($action($request->user(), $request->validated())))->response()->setStatusCode(201);
     }
 
-    public function update(NoteRequest $request, int $note, NoteService $service): NoteResource
+    public function update(NoteRequest $request, int $note, UpdateNoteAction $action): NoteResource
     {
-        $data = $request->validated();
-        $version = $data['version'];
-        unset($data['version']);
-
-        try {
-            $saved = $service->save($request->user(), $note, $version, $data);
-        } catch (ValidationException $exception) {
-            if ($exception->errors()['conflict'] ?? false) {
-                throw new ConflictHttpException($exception->errors()['conflict'][0]);
-            }
-
-            throw $exception;
-        }
-
-        return new NoteResource($saved);
+        return new NoteResource($action($request->user(), $this->owned($request, $note), $request->validated()));
     }
 
-    public function destroy(Request $request, int $note, NoteService $service): JsonResponse
+    public function destroy(NoteVersionRequest $request, int $note, DeleteNoteAction $action): JsonResponse
     {
-        $data = $request->validate(['version' => ['required', 'integer', 'min:1']]);
-
-        try {
-            $service->delete($request->user(), $note, $data['version']);
-        } catch (ValidationException $exception) {
-            if ($exception->errors()['conflict'] ?? false) {
-                throw new ConflictHttpException($exception->errors()['conflict'][0]);
-            }
-
-            throw $exception;
-        }
+        $action($request->user(), $this->owned($request, $note), $request->integer('version'));
 
         return response()->json(status: 204);
+    }
+
+    public function revisions(RevisionFilterRequest $request, int $note): AnonymousResourceCollection
+    {
+        return NoteRevisionResource::collection($this->owned($request, $note)->revisions()->paginate(10));
+    }
+
+    public function restore(NoteVersionRequest $request, int $note, int $revision, RestoreNoteRevisionAction $action): NoteResource
+    {
+        $record = $this->owned($request, $note);
+        $snapshot = $record->revisions()->findOrFail($revision);
+
+        return new NoteResource($action($request->user(), $record, $snapshot, $request->integer('version')));
+    }
+
+    private function owned(Request $request, int $id): Note
+    {
+        $note = $request->user()->notes()->findOrFail($id);
+        Gate::authorize('view', $note);
+
+        return $note;
     }
 }
