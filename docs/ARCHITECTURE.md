@@ -1,27 +1,31 @@
-# Architecture — Laravel 13 API and React SPA
+# Architecture decisions
 
-## Boundaries
+## API and ownership
 
-The server is **Laravel 13** with a versioned JSON API and session-based authentication. **React 19** renders the interface, React Router manages client-side navigation, Axios handles requests, and **Tailwind CSS 4** styles the pages.
+Laravel serves the React shell and `/api/v1` on the same origin. Axios uses session cookies and CSRF headers. React owns editable state; the server independently authorizes data access. Reads start from the current user's `notes()` relationship, returning 404 for another owner's IDs. `NotePolicy` protects domain actions too, including direct calls without a controller. Legacy unowned notes stay inaccessible.
 
-The React editor owns form state. All reads and mutations happen through `/api/v1/notes` rather than embedded Eloquent data or Livewire hydration. Laravel validates requests and returns `NoteResource` fields only.
+Form Requests validate transport input. `NoteRules` shares content constraints with actions, so invoking an action directly does not bypass validation. `CredentialRequest` normalizes string email input without coercing malformed arrays; `CredentialRules` preserves email/control-character and password byte limits. API Resources select response fields. The former broad `NoteService` is replaced by focused create/update/delete/restore actions.
 
-## Ownership and legacy data
+## Transactions and concurrency
 
-Queries always start from the authenticated user's `notes()` relation. `NotePolicy` authorizes writes and foreign records return 404. The ownership migration deliberately leaves legacy records with `user_id = null` hidden; **never auto-assign these records to the first person who registers**. Back up the database and verify ownership before performing any manual data migration.
+Notes begin at version 1. An edit checks the expected version, preserves a baseline snapshot for an older owned note if necessary, conditionally updates the owner/version-matched row, and records the resulting snapshot in one transaction. Snapshot persistence failure rolls back the note write. Tests inject those failures to verify atomicity.
 
-## Concurrency
+Restore verifies the source revision belongs to the same authorized note, then uses the same conditional update path. It creates a new version with a `restored_from_version` marker; historical snapshots are not overwritten. Stale edits, restores, or deletes return 409. Permanent deletion is version checked and cascades to its revision records. This history does not offer recovery after permanent deletion.
 
-Notes have monotonically increasing integer `version` values, initially 1. Updates and deletes use one conditional SQL operation that includes the expected version and current user. A stale request fails without mutating the record. The JSON controller translates version conflicts to HTTP **409**, and React retains the editor's draft. A deleted note cannot accidentally be re-created as a side effect of editing.
+The snapshot table's unique `(note_id, version)` index enforces one snapshot per version and supports paginated history queries. Existing notes are not bulk-copied by the migration: their state is captured on their first edit. Earlier pre-migration versions cannot be reconstructed.
 
-## API shape and paging
+## React state boundaries
 
-`NoteRequest` validates bounded note payloads; `NoteResource` exposes only public note fields. The list endpoint supports `q` (title/content search), `important`, and bounded `per_page` (1–50, default 10). Database ordering uses `created_at DESC, id DESC` for deterministic pagination. Indexes support owner and importance filtering.
+List-loading errors and editor mutation errors are separate; a successful background search cannot dismiss a conflict. Search requests use AbortController and stale-result guards. List pages clamp to the last valid page after deletion. Writes disable editor controls and use an in-memory mutex to avoid overlapping operations.
 
-## Sessions and CSRF
+Unsaved changes require explicit confirmation before switching/discarding notes or signing out. Conflict controls let the writer load the latest saved version or keep the draft as a new note. History restoration explicitly confirms replacement, including unsaved editor content. The history dialog traps focus, closes on Escape, and restores focus to its opener.
 
-Authentication uses Laravel's `web` session guard. Sanctum's stateful API middleware accepts same-origin session cookies. React first gets `/sanctum/csrf-cookie` and Axios sends CSRF headers with mutations. Password reset links are Laravel-generated; account access is not based on localStorage bearer tokens.
+The auth provider holds a memory-only draft map keyed by user ID. A 401 redirects to sign-in while keeping the current account's draft in that tab. The same user can recover it after signing in; another account uses a different map entry. Explicit sign-out clears the map. No draft data is written to browser storage, and reload/close loses the in-memory draft after the browser's unsaved-change warning.
 
-## Local architecture
+## Queries and local runtime
 
-Docker Compose builds Vite assets in a Node 22 stage and serves Laravel using PHP 8.4 and SQLite. A named volume preserves the local database and encryption key. CI runs in-memory PHP tests and a separate disposable SQLite file for browser tests. This project intentionally avoids deployment/cluster infrastructure.
+Notes paginate with `created_at DESC, id DESC`, using owner/importance indexes. History pages contain ten snapshots. Substring search uses parameterized LIKE queries; owner indexes constrain access, but a normal B-tree does not accelerate a leading-wildcard content search. Lazy loading is prohibited in development/tests to catch accidental relationship queries.
+
+Docker Compose runs one PHP app container. Node builds/tests the frontend during image creation. SQLite and the generated local key persist in a named volume; migrations are additive. Demo data is explicit, local-only, and transactional. Existing demo accounts are skipped rather than reset.
+
+PHP tests force isolated in-memory settings, including when launched inside Compose. Browser checks use a separate disposable container/database on port 8010. README screenshots use synthetic records owned by the demo writer. No CI/deployment tooling is part of this setup.

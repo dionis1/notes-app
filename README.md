@@ -1,114 +1,133 @@
-# Notes — Laravel 13 API + React SPA
+# Notes · Laravel 13 API + React SPA
 
-A private, responsive notes application built with **Laravel 13**, **PHP 8.4**, **React 19**, **Tailwind CSS 4** and **Vite 6**. The browser talks to a versioned Laravel JSON API through secure, same-origin session cookies.
+A private notebook built with **Laravel 13, PHP 8.4, React 19, Tailwind CSS 4, and Vite 6**. React talks to a versioned Laravel API using same-origin session cookies.
 
-## Features
+![React notes workspace showing important demo notes](docs/screenshots/notes-desktop.png)
 
-- Register, sign in, sign out, and request or complete a password reset.
-- Create, edit, delete, and mark notes as important.
-- Search titles and content, filter important notes, and browse ten notes per page.
-- All notes are private: users cannot view, change, or delete another user's notes.
-- Optimistic concurrency protection prevents stale edits and deletes; HTTP 409 conflicts leave the editor's draft intact.
-- Responsive React interface with Tailwind CSS 4, accessible form labels, focus styles, delete confirmation and user feedback.
-- Laravel Form Requests, API Resources, a NoteService and a NotePolicy.
-- PHPUnit feature tests, Laravel Pint, React production build, and Chromium browser tests with axe accessibility checks.
+## Application features
 
-This is a learning/portfolio application, not an audited production service. Notes do not sync between browser tabs in real time; conflicts are detected when saving.
+- Registration, sign-in/out, and password recovery with expiring, single-use tokens.
+- Create, edit, delete, search, and mark notes as important.
+- Owner-scoped queries and policies, including authorization inside domain actions.
+- Ten notes per page, bounded API pagination, deterministic ordering, and debounced search.
+- Atomic version checks for edits, deletes, and restores; conflicts return HTTP 409.
+- Private revision snapshots and restoration as a new version, without rewriting earlier snapshots.
+- Preserved editor drafts, explicit discard confirmation, and recovery after conflicts or session expiry.
+- Responsive React forms, accessible labels, history dialog focus handling, and request feedback.
+- Shared validation rules, Form Requests, API Resources, focused invokable actions, and development lazy-loading protection.
+- Factories, optional demo data, Pest/PHPUnit regressions, frontend unit tests, and Chromium/axe checks.
 
-## Start on Ubuntu with Docker
+## Run locally with Docker Compose
 
-You need only Docker Engine and Docker Compose. **No local PHP, Composer or Node installation is necessary.**
+Docker Engine and Compose are the only requirements for running the app. PHP, Composer, Node, and asset compilation run inside the image.
 
 ```bash
-git clone https://github.com/dionis1/notes-app.git
+git clone git@github.com:dionis1/notes-app.git
 cd notes-app
 docker compose up --build -d
+```
+
+Open [http://localhost:8000](http://localhost:8000). Prefix Docker commands with `sudo` if required on your PC. Compose runs one app container, applies additive migrations at startup, and persists SQLite, sessions, logs, and the local encryption key in a named volume. Rebuild after changing source code.
+
+```bash
+# Inspect startup:
 docker compose ps
-```
-
-Open **http://localhost:8000** and create an account. The first build takes several minutes. The image builds React assets with Node 22 and runs Laravel with PHP 8.4.
-
-```bash
 docker compose logs --tail=50 app
-docker compose exec app php artisan test
+
+# Stop and free the container's RAM, keeping data:
 docker compose down
+
+# Restart:
+docker compose up -d
+
+# If another app uses port 8000:
+APP_PORT=8001 docker compose up -d
 ```
 
-A named Docker volume retains your notes database and local application key. **Do not use `docker compose down -v` if you want to keep your notes**; `-v` deletes the volume.
+**`docker compose down -v` deletes the notes volume and local key.** Back up existing databases before migrating. Legacy notes without an owner remain hidden; the application never assigns them to a newly registered user.
 
-To use a different port: `APP_PORT=8001 docker compose up --build -d`. The application binds to localhost by default.
+Docker is for local use. CI and deployment tooling are not included.
 
-## Start without Docker
+## Demo notebook and factories
 
-Requirements: **PHP 8.4**, Composer 2, Node 22 with npm, and PHP PDO SQLite, mbstring, DOM/XML.
+Startup does not create demo accounts. Add them explicitly:
 
 ```bash
-composer install
-npm ci
-cp .env.example .env
-php artisan key:generate
-mkdir -p storage/app
-touch storage/app/notes.sqlite
-php artisan migrate
-npm run build
-php artisan serve
+docker compose exec app php artisan db:seed --class=DemoSeeder
 ```
 
-Open http://localhost:8000. For React/Tailwind development, run `npm run dev` in another terminal. The frontend and API should share the same origin for Sanctum's cookie-based authentication.
-
-If you already have notes in `storage/app/notes.sqlite`, **back it up first**. The migration preserves records; do not run `migrate:fresh` on valuable data. Notes predating ownership are left unassigned and cannot be viewed by a new account automatically.
-
-## API
-
-All note endpoints are under `/api/v1` and require `auth:sanctum`. The React client obtains `/sanctum/csrf-cookie` before authentication requests, and Axios sends the CSRF token with state-changing requests.
-
-| Method | Path | Purpose |
+| Notebook | Email | Password |
 | --- | --- | --- |
-| GET | `/api/v1/me` | Safe current-user summary |
-| GET | `/api/v1/notes` | Paginated notes; `q`, `important`, `page`, `per_page` |
-| POST | `/api/v1/notes` | Create a note |
-| GET | `/api/v1/notes/{id}` | Read an owned note |
-| PATCH/PUT | `/api/v1/notes/{id}` | Update using the required `version` |
-| DELETE | `/api/v1/notes/{id}` | Delete using the required `version` |
+| Writer: 12 notes, four important, and example revision history | `writer@demo.notes.test` | `NotesDemo!2026` |
+| Separate private notebook | `other@demo.notes.test` | `NotesDemo!2026` |
 
-Credentials and recovery: `POST /register`, `POST /login`, `POST /logout`, `POST /forgot-password`, `POST /reset-password`.
+The public demo credentials are for local use only. The seeder refuses environments other than `local` and `testing`. It creates the dataset transactionally through the application actions. Existing accounts are skipped entirely, so reruns preserve edited titles, passwords, and deleted demo notes. To refill an existing notebook, create records normally or use factories in an isolated database. `php artisan db:seed` calls the same demo seeder.
 
-API errors: **401** for unauthenticated access, **404** for foreign/missing notes, **422** for invalid input and **409** for concurrent edits/deletes. The server returns explicit API Resources rather than entire Eloquent records. Filtering and pagination execute in the database.
+`UserFactory` and `NoteFactory` provide Faker fixtures. Factories insert records directly; use the note actions when fixtures also need validation and revision history.
 
-## Tests and quality checks
+![Editing a demo note](docs/screenshots/edit-note.png)
+
+![Private version history and restore controls](docs/screenshots/revision-history.png)
+
+## Tests and checks
 
 ```bash
-php artisan test
-vendor/bin/pint --test
-composer validate --no-check-publish
-npm ci
-npm run build
-npx playwright install --with-deps chromium
-npm run test:browser
+# PHP/Pest regressions, isolated from personal notes:
+docker compose exec app php artisan test
+
+# PHP formatting and locked dependencies:
+docker compose exec app vendor/bin/pint --test
+docker compose exec app composer audit --locked
+
+# Frontend unit tests/build with Docker:
+docker build --target assets -t notes-frontend:local .
+docker run --rm notes-frontend:local npm run test:unit
+docker run --rm notes-frontend:local npm audit
 ```
 
-GitHub Actions runs Laravel/Pint, the React production build, and Playwright with Chromium and axe-core. PHP tests use in-memory SQLite. The browser test starts a separate development server on port 8010, resetting **only** `/tmp/notes-browser.sqlite`; never point it at a real notes database.
+PHP tests force an in-memory database, test encryption key, and isolated session/cache/mail settings even inside the Compose app. Tests cover ownership, direct-action authorization, rollback after snapshot failures, stale updates/deletes/restores, immutable history, deletion cascades, legacy records, credential boundaries, password-reset expiry/reuse, pagination, and non-destructive seeding.
 
-For dependency reviews, run `composer audit` and `npm audit`. A passing automated test suite is not a security audit.
+### Browser checks
 
-## Code organization
+Build the app image first. With Node 22 and npm available on the PC:
 
-- `app/Http/Controllers/Api/V1/NoteController.php`: versioned HTTP endpoints and owner-scoped reads.
-- `app/Http/Requests/NoteRequest.php`: validated note payloads.
-- `app/Http/Resources/NoteResource.php`: controlled JSON responses.
-- `app/Services/NoteService.php`: scoped operations and version-aware writes.
-- `app/Policies/NotePolicy.php`: ownership authorization.
-- `app/Http/Controllers/AuthController.php`: sessions and password recovery.
-- `resources/js/`: React SPA, Axios client, authentication and notes pages.
-- `resources/css/app.css`: Tailwind 4 entry point.
-- `tests/Feature` and `tests/Browser`: server and real-browser regression tests.
+```bash
+npm ci
+npx playwright install chromium
+npm run test:browser
 
-See [architecture decisions](docs/ARCHITECTURE.md) and [security considerations](docs/SECURITY.md). Previous Livewire screenshots and implementation history remain available through Git history.
+# Or use installed Chrome:
+CHROME_BIN=/usr/bin/google-chrome npm run test:browser
+```
 
-## Limitations
+The runner starts and removes a separate Docker container on port 8010, with an internal disposable database and no personal-volume mount. It refuses to reuse another running server. Browser checks cover CRUD, search/filtering, independent-account privacy, mobile overflow, axe accessibility findings, revision restore, keyboard focus, conflict/draft recovery, session expiry, and cross-site forgery protection.
 
-No multi-user note sharing, rich-text editor, file attachments, background synchronization or real-time collaboration. Local password-reset emails are logged; no external mail provider is configured. Production deployment, backups and a security review require additional work.
+Test artifacts are written under `test-results`, separately from README images. Automated checks do not replace manual accessibility review.
 
-## License
+To recreate the screenshots from an untouched demo dataset:
 
-[MIT](LICENSE).
+```bash
+SCREENSHOT_URL=http://127.0.0.1:8000 CHROME_BIN=/usr/bin/google-chrome node scripts/capture-screenshots.mjs
+```
+
+## Authentication and API
+
+Register an account or use the optional demo writer. Reset links are written to the local Laravel log; no external mail provider is configured:
+
+```bash
+docker compose exec app tail -n 100 storage/logs/laravel.log
+```
+
+Keep reset links private. The React client requests `/sanctum/csrf-cookie` and uses cookies plus CSRF headers. Business data lives under `/api/v1/notes`; all note and revision reads are scoped to the authenticated owner.
+
+See the [API contract](docs/API.md), [architecture decisions](docs/ARCHITECTURE.md), and [application security notes](docs/SECURITY.md).
+
+## Versions and scope
+
+The lock files resolve stable Laravel 13, React 19, and Tailwind 4 releases. This iteration keeps that stack. SQLite is the verified database. Leading-wildcard substring search is intended for small personal notebooks; no large-dataset or MySQL/PostgreSQL performance claim is made.
+
+Separate tabs do not receive pushed updates; conflicts are detected when writing. Unsaved drafts stay in browser memory per account, and are cleared on explicit sign-out or a full page reload/close. The browser warns before leaving a dirty editor. Drafts are not written to localStorage. Revision history starts at creation or the first edit of an older note; it cannot reconstruct earlier versions. Permanent deletion also removes that note's history. Notes are access-controlled, not end-to-end encrypted.
+
+## Mobile editor
+
+<img src="docs/screenshots/notes-mobile.png" alt="React notes editor on a 390-pixel screen" width="390">
